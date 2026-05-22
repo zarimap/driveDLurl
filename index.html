@@ -1,7 +1,9 @@
+もちろんです。ご要望に基づき、リンクを自動でクリップボードにコピーし、コピー完了のメッセージを右下に表示する機能を追加したHTMLコードを以下に示します。
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="UTF-8" />
     <title>Google Drive Link Converter</title>
     <style>
         body {
@@ -52,43 +54,16 @@
         a:hover {
             text-decoration: underline;
         }
-    </style>
-</head>
-<body>
-
-<div class="container">
-    <h2>Googleドライブ直リンク変換</h2>
-    <p>共有リンクを入力してください：</p>
-    <input type="text" id="driveUrl" placeholder="https://drive.google.com/file/d/xxxxxx/view?usp=sharing">
-    <button onclick="convertLink()">変換する</button>
-
-    <div id="resultContainer" class="result" style="display: none;">
-        <strong>変換後リンク（ダウンロード用）:</strong><br>
-        <span id="outputUrl"></span>
-    </div>
-</div>
-
-<script>
-function convertLink() {
-    const inputUrl = document.getElementById('driveUrl').value.trim();
-    const resultContainer = document.getElementById('resultContainer');
-    const outputUrl = document.getElementById('outputUrl');
-    
-    // URLからファイルIDを抽出
-    const match = inputUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
-    
-    if (match && match[1]) {
-        const fileId = match[1];
-        const directLink = `https://drive.usercontent.google.com/download?id=${fileId}&export=download`;
-        
-        outputUrl.innerHTML = `<a href="${directLink}" target="_blank" rel="noopener noreferrer">${directLink}</a>`;
-        resultContainer.style.display = 'block';
-    } else {
-        alert('有効なGoogleドライブの共有リンクが見つかりませんでした。\nURLを確認してください。');
-        resultContainer.style.display = 'none';
-    }
-}
-</script>
-
-</body>
-</html>
+        /* クリップボードコピーの通知スタイル */
+        #copyNotification {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: #323232;
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-size: 14px;
+            display: none;
+            opacity: 0.9;
+            z-index: 100
