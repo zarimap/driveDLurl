@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Google Drive Link Converter</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 20px;
+            background-color: #f9f9f9;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            background: #fff;
+            padding: 20px;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            font-size: 14px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+            margin-bottom: 15px;
+        }
+        button {
+            padding: 10px 15px;
+            font-size: 14px;
+            background-color: #1a73e8;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #1557b0;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f1f3f4;
+            border-radius: 4px;
+            word-break: break-all;
+        }
+        a {
+            color: #1a73e8;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Googleドライブ直リンク変換</h2>
+    <p>共有リンクを入力してください：</p>
+    <input type="text" id="driveUrl" placeholder="https://drive.google.com/file/d/xxxxxx/view?usp=sharing">
+    <button onclick="convertLink()">変換する</button>
+
+    <div id="resultContainer" class="result" style="display: none;">
+        <strong>変換後リンク（ダウンロード用）:</strong><br>
+        <span id="outputUrl"></span>
+    </div>
+</div>
+
+<script>
+function convertLink() {
+    const inputUrl = document.getElementById('driveUrl').value.trim();
+    const resultContainer = document.getElementById('resultContainer');
+    const outputUrl = document.getElementById('outputUrl');
+    
+    // URLからファイルIDを抽出
+    const match = inputUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    
+    if (match && match[1]) {
+        const fileId = match[1];
+        const directLink = `https://drive.usercontent.google.com/download?id=${fileId}&export=download`;
+        
+        outputUrl.innerHTML = `<a href="${directLink}" target="_blank" rel="noopener noreferrer">${directLink}</a>`;
+        resultContainer.style.display = 'block';
+    } else {
+        alert('有効なGoogleドライブの共有リンクが見つかりませんでした。\nURLを確認してください。');
+        resultContainer.style.display = 'none';
+    }
+}
+</script>
+
+</body>
+</html>
