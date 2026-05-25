@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Esports Ultra-Responsive Tetris (ArrowUp HD Edition)</title>
+    <title>Esports Ultra-Responsive Tetris (Dynamic Gravity & SD)</title>
     <style>
         :root {
             --bg-color: #05070f;
@@ -103,15 +103,18 @@
                 <h3>LEVEL</h3>
                 <div id="level-val" class="val">1</div>
             </div>
+            <div class="widget">
+                <h3>LINES</h3>
+                <div id="lines-val" class="val">0</div>
+            </div>
         </div>
         <div class="widget">
-            <h3>TETR.IO TUNING</h3>
+            <h3>SPEED TUNING</h3>
             <table class="config-table">
-                <tr><td>DAS</td><td>110 ms</td></tr>
-                <tr><td>ARR</td><td>0 ms</td></tr>
-                <tr><td>SDF</td><td>∞ (Instant)</td></tr>
+                <tr><td>DAS (横溜め)</td><td>100 ms</td></tr>
+                <tr><td>ARR (移動間隔)</td><td>10 ms</td></tr>
+                <tr><td>SDF (下倍率)</td><td>20x (Dynamic)</td></tr>
                 <tr><td>HARD DROP</td><td>Arrow Up</td></tr>
-                <tr><td>ROTATION</td><td>Z / X Keys</td></tr>
             </table>
         </div>
     </div>
@@ -197,9 +200,15 @@ class Engine {
         this.score = 0; this.lines = 0; this.level = 1; this.combo = -1; this.b2b = false;
         this.gameover = false;
 
-        this.DAS = 110; this.ARR = 0; 
+        // Custom Esports Tuning
+        this.DAS = 100; 
+        this.ARR = 10; 
         this.lockDelayLimit = 500; this.maxLockResets = 15;
-        this.gravity = 1000;
+        
+        // Dynamic Gravity System
+        this.gravity = 1000; // 初期自由落下速度 (ms)
+        this.SDF = 20;       // ソフトドロップ倍率 (通常落下の20倍速)
+        this.softDropTimer = 0;
 
         this.lockTimer = 0; this.lockResets = 0; this.fallTimer = 0;
         this.hasHeld = false; this.lastMoveRot = false; this.lastKickIdx = 0;
@@ -253,14 +262,28 @@ class Engine {
 
     onKeyDown(e) {
         if (this.gameover) return;
+        let now = performance.now();
         switch (e.code) {
             case 'ArrowLeft':
-                this.inputState.left = true; this.inputState.right = false;
-                this.dasTimers.left = performance.now(); this.shiftLeft(); break;
+                if (!this.inputState.left) {
+                    this.inputState.left = true; this.inputState.right = false;
+                    this.dasTimers.left = now; this.arrTimers.left = now;
+                    this.shiftLeft();
+                }
+                break;
             case 'ArrowRight':
-                this.inputState.right = true; this.inputState.left = false;
-                this.dasTimers.right = performance.now(); this.shiftRight(); break;
-            case 'ArrowDown': this.inputState.down = true; break;
+                if (!this.inputState.right) {
+                    this.inputState.right = true; this.inputState.left = false;
+                    this.dasTimers.right = now; this.arrTimers.right = now;
+                    this.shiftRight();
+                }
+                break;
+            case 'ArrowDown': 
+                if (!this.inputState.down) {
+                    this.inputState.down = true;
+                    this.softDropTimer = 0; // タイマーリセット
+                }
+                break;
             case 'ArrowUp': this.hardDrop(); break; 
             case 'KeyX': this.rotate(1); break;
             case 'KeyZ': this.rotate(-1); break;
@@ -373,8 +396,13 @@ class Engine {
         
         if (linesCount > 0) {
             this.combo++; this.lines += linesCount;
+            
+            // Dynamic Level Scaling (10 lines per level)
             this.level = Math.floor(this.lines / 10) + 1;
-            this.gravity = Math.max(20, 1000 - (this.level - 1) * 80);
+            
+            // 競技用レベル別重力計算 (レベルアップごとに落下の待ち時間を短縮)
+            // レベル1=1000ms, レベル5=320ms, レベル10=90ms, レベル15=28ms のように超加速
+            this.gravity = Math.max(15, 1000 * Math.pow(0.77, this.level - 1));
             
             let base = 0, name = "";
             if (tspin) {
@@ -395,6 +423,7 @@ class Engine {
         
         document.getElementById('score-val').innerText = this.score;
         document.getElementById('level-val').innerText = this.level;
+        document.getElementById('lines-val').innerText = this.lines;
         
         this.spawn();
     }
@@ -407,20 +436,43 @@ class Engine {
     }
 
     updateInput(dt, now) {
+        // Horizontal Movement (ARR Step Runner)
         if (this.inputState.left) {
             if (now - this.dasTimers.left >= this.DAS) {
-                if (this.ARR === 0) { while(this.shiftLeft()){} } 
-                else if (now - this.arrTimers.left >= this.ARR) { this.shiftLeft(); this.arrTimers.left = now; }
+                let elapsed = now - this.arrTimers.left;
+                if (elapsed >= this.ARR) {
+                    let steps = Math.floor(elapsed / this.ARR);
+                    for(let i=0; i<steps; i++) { this.shiftLeft(); }
+                    this.arrTimers.left = now - (elapsed % this.ARR);
+                }
             }
         }
         if (this.inputState.right) {
             if (now - this.dasTimers.right >= this.DAS) {
-                if (this.ARR === 0) { while(this.shiftRight()){} }
-                else if (now - this.arrTimers.right >= this.ARR) { this.shiftRight(); this.arrTimers.right = now; }
+                let elapsed = now - this.arrTimers.right;
+                if (elapsed >= this.ARR) {
+                    let steps = Math.floor(elapsed / this.ARR);
+                    for(let i=0; i<steps; i++) { this.shiftRight(); }
+                    this.arrTimers.right = now - (elapsed % this.ARR);
+                }
             }
         }
+
+        // 連動型ソフトドロップ処理 (現在の自由落下速度の20倍の速さで1マスずつ刻む)
         if (this.inputState.down) {
-            while (this.tryMove(0, 1)) { this.score += 1; } this.resetFallTimer();
+            this.softDropTimer += dt;
+            let softDropInterval = this.gravity / this.SDF; // 通常落下の20分の一の時間
+            if (this.softDropTimer >= softDropInterval) {
+                let steps = Math.floor(this.softDropTimer / softDropInterval);
+                for(let i=0; i<steps; i++) {
+                    if (this.tryMove(0, 1)) {
+                        this.score += 1; // ソフトドロップによる加点
+                    }
+                }
+                this.softDropTimer = this.softDropTimer % softDropInterval;
+                this.resetFallTimer(); // 通常の自由落下タイマーをクリア
+                document.getElementById('score-val').innerText = this.score;
+            }
         }
     }
 
@@ -436,8 +488,14 @@ class Engine {
             if (this.checkCollide(this.active, this.active.x, this.active.y + 1)) {
                 this.lockTimer += dt; if (this.lockTimer >= this.lockDelayLimit) { this.lock(); }
             } else {
-                this.lockTimer = 0; this.fallTimer += dt;
-                if (this.fallTimer >= this.gravity) { this.active.y++; this.fallTimer = 0; this.lastMoveRot = false; }
+                this.lockTimer = 0;
+                // 通常の自由落下処理（下キーを押していない時のみカウント蓄積）
+                if (!this.inputState.down) {
+                    this.fallTimer += dt;
+                    if (this.fallTimer >= this.gravity) {
+                        this.active.y++; this.fallTimer = 0; this.lastMoveRot = false;
+                    }
+                }
             }
             this.render();
             requestAnimationFrame(t => this.loop(t));
