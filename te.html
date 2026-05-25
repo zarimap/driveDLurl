@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Esports Ultra-Responsive Tetris (ArrowUp HD Edition)</title>
+    <style>
+        :root {
+            --bg-color: #05070f;
+            --grid-color: #121824;
+            --border-color: #1e293b;
+            --panel-color: #0b0f19;
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        body {
+            background-color: var(--bg-color);
+            color: #f8fafc;
+            font-family: var(--font-family);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        #container {
+            display: grid;
+            grid-template-columns: 180px 300px 180px;
+            gap: 30px;
+            background: var(--panel-color);
+            padding: 30px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+        }
+        .panel {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .widget {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 15px;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        .widget h3 {
+            margin: 0 0 8px 0;
+            font-size: 12px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+        .val {
+            font-size: 24px;
+            font-weight: 700;
+            font-family: monospace;
+        }
+        #viewport {
+            position: relative;
+            width: 300px;
+            height: 600px;
+            background: #000;
+            border: 2px solid #334155;
+            border-radius: 4px;
+        }
+        canvas { display: block; }
+        .config-table {
+            font-size: 11px;
+            color: #94a3b8;
+            width: 100%;
+            text-align: left;
+        }
+        .config-table td { padding: 3px 0; }
+        .config-table td:last-child { text-align: right; color: #38bdf8; font-weight: bold;}
+        #alert-box {
+            position: absolute;
+            top: 40%; width: 100%;
+            text-align: center;
+            font-size: 20px;
+            font-weight: bold;
+            color: #a855f7;
+            text-shadow: 0 0 10px rgba(168,85,247,0.6);
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="container">
+    <div class="panel">
+        <div>
+            <div class="widget">
+                <h3>HOLD</h3>
+                <canvas id="hold" width="120" height="120"></canvas>
+            </div>
+            <div class="widget">
+                <h3>SCORE</h3>
+                <div id="score-val" class="val">0</div>
+            </div>
+            <div class="widget">
+                <h3>LEVEL</h3>
+                <div id="level-val" class="val">1</div>
+            </div>
+        </div>
+        <div class="widget">
+            <h3>TETR.IO TUNING</h3>
+            <table class="config-table">
+                <tr><td>DAS</td><td>110 ms</td></tr>
+                <tr><td>ARR</td><td>0 ms</td></tr>
+                <tr><td>SDF</td><td>∞ (Instant)</td></tr>
+                <tr><td>HARD DROP</td><td>Arrow Up</td></tr>
+                <tr><td>ROTATION</td><td>Z / X Keys</td></tr>
+            </table>
+        </div>
+    </div>
+
+    <div id="viewport">
+        <canvas id="field" width="300" height="600"></canvas>
+        <div id="alert-box"></div>
+    </div>
+
+    <div class="panel">
+        <div class="widget" style="height: 100%;">
+            <h3>NEXT</h3>
+            <canvas id="next" width="120" height="520"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+const COLS = 10;
+const ROWS = 20;
+const BLOCK = 30;
+
+const TETROMINO_DATA = {
+    'I': { color: '#00f0f0', size: 4, matrix: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]] },
+    'J': { color: '#0000f0', size: 3, matrix: [[1,0,0],[1,1,1],[0,0,0]] },
+    'L': { color: '#f0a000', size: 3, matrix: [[0,0,1],[1,1,1],[0,0,0]] },
+    'O': { color: '#f0f000', size: 2, matrix: [[1,1],[1,1]] },
+    'S': { color: '#00f000', size: 3, matrix: [[0,1,1],[1,1,0],[0,0,0]] },
+    'T': { color: '#a000f0', size: 3, matrix: [[0,1,0],[1,1,1],[0,0,0]] },
+    'Z': { color: '#f00000', size: 3, matrix: [[1,1,0],[0,1,1],[0,0,0]] }
+};
+
+const SRS_KICKS = {
+    "normal": {
+        "0-1": [[0,0], [-1,0], [-1, 1], [0,-2], [-1,-2]], "1-0": [[0,0], [ 1,0], [ 1,-1], [0, 2], [ 1, 2]],
+        "1-2": [[0,0], [ 1,0], [ 1,-1], [0, 2], [ 1, 2]], "2-1": [[0,0], [-1,0], [-1, 1], [0,-2], [-1,-2]],
+        "2-3": [[0,0], [ 1,0], [ 1, 1], [0,-2], [ 1,-2]], "3-2": [[0,0], [-1,0], [-1,-1], [0, 2], [-1, 2]],
+        "3-0": [[0,0], [-1,0], [-1,-1], [0, 2], [-1, 2]], "0-3": [[0,0], [ 1,0], [ 1, 1], [0,-2], [ 1,-2]]
+    },
+    "I": {
+        "0-1": [[0,0], [-2,0], [ 1,0], [-2,-1], [ 1, 2]], "1-0": [[0,0], [ 2,0], [-1,0], [ 2, 1], [-1,-2]],
+        "1-2": [[0,0], [-1,0], [ 2,0], [-1, 2], [ 2,-1]], "2-1": [[0,0], [ 1,0], [-2,0], [ 1,-2], [-2, 1]],
+        "2-3": [[0,0], [ 2,0], [-1,0], [ 2, 1], [-1,-2]], "3-2": [[0,0], [-2,0], [ 1,0], [-2,-1], [ 1, 2]],
+        "3-0": [[0,0], [ 1,0], [-2,0], [ 1,-2], [-2, 1]], "0-3": [[0,0], [-1,0], [ 2,0], [-1, 2], [ 2,-1]]
+    }
+};
+
+class Piece {
+    constructor(type) {
+        this.type = type;
+        this.color = TETROMINO_DATA[type].color;
+        this.size = TETROMINO_DATA[type].size;
+        this.matrix = TETROMINO_DATA[type].matrix.map(r => [...r]);
+        this.x = Math.floor((COLS - this.size) / 2);
+        this.y = (type === 'I') ? -2 : -1;
+        this.rot = 0;
+    }
+    clone() {
+        let p = new Piece(this.type); p.x = this.x; p.y = this.y; p.rot = this.rot;
+        p.matrix = this.matrix.map(r => [...r]); return p;
+    }
+    mutateRotation(dir) {
+        let next = Array.from({length: this.size}, () => Array(this.size).fill(0));
+        for (let y = 0; y < this.size; y++) {
+            for (let x = 0; x < this.size; x++) {
+                if (dir > 0) next[x][this.size - 1 - y] = this.matrix[y][x];
+                else next[this.size - 1 - x][y] = this.matrix[y][x];
+            }
+        }
+        this.matrix = next; this.rot = (this.rot + dir + 4) % 4;
+    }
+}
+
+class Engine {
+    constructor() {
+        this.fCtx = document.getElementById('field').getContext('2d');
+        this.hCtx = document.getElementById('hold').getContext('2d');
+        this.nCtx = document.getElementById('next').getContext('2d');
+
+        this.grid = Array.from({length: ROWS}, () => Array(COLS).fill(null));
+        this.bag = []; this.queue = []; this.holdPiece = null; this.active = null;
+        
+        this.score = 0; this.lines = 0; this.level = 1; this.combo = -1; this.b2b = false;
+        this.gameover = false;
+
+        this.DAS = 110; this.ARR = 0; 
+        this.lockDelayLimit = 500; this.maxLockResets = 15;
+        this.gravity = 1000;
+
+        this.lockTimer = 0; this.lockResets = 0; this.fallTimer = 0;
+        this.hasHeld = false; this.lastMoveRot = false; this.lastKickIdx = 0;
+
+        this.inputState = { left: false, right: false, down: false };
+        this.dasTimers = { left: 0, right: 0 };
+        this.arrTimers = { left: 0, right: 0 };
+        this.lastTime = performance.now();
+
+        this.irsBuffer = 0; this.ihsBuffer = false;
+
+        this.init();
+    }
+
+    init() {
+        for (let i = 0; i < 6; i++) this.pushBag();
+        this.spawn();
+        window.addEventListener('keydown', e => this.onKeyDown(e));
+        window.addEventListener('keyup', e => this.onKeyUp(e));
+        requestAnimationFrame(t => this.loop(t));
+    }
+
+    pushBag() {
+        if (this.bag.length === 0) this.bag = Object.keys(TETROMINO_DATA).sort(() => Math.random() - 0.5);
+        this.queue.push(new Piece(this.bag.pop()));
+    }
+
+    spawn() {
+        this.active = this.queue.shift(); this.pushBag(); this.hasHeld = false;
+        this.lockResets = 0; this.lockTimer = 0;
+        
+        if (this.ihsBuffer) { this.ihsBuffer = false; this.executeHold(); return; }
+        if (this.irsBuffer !== 0) { let d = this.irsBuffer; this.irsBuffer = 0; this.rotate(d); }
+
+        if (this.checkCollide(this.active)) this.gameover = true;
+        this.resetFallTimer();
+    }
+
+    checkCollide(p, tx = p.x, ty = p.y, mat = p.matrix) {
+        for (let y = 0; y < p.size; y++) {
+            for (let x = 0; x < p.size; x++) {
+                if (mat[y][x]) {
+                    let fx = tx + x, fy = ty + y;
+                    if (fx < 0 || fx >= COLS || fy >= ROWS) return true;
+                    if (fy >= 0 && this.grid[fy][fx]) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    onKeyDown(e) {
+        if (this.gameover) return;
+        switch (e.code) {
+            case 'ArrowLeft':
+                this.inputState.left = true; this.inputState.right = false;
+                this.dasTimers.left = performance.now(); this.shiftLeft(); break;
+            case 'ArrowRight':
+                this.inputState.right = true; this.inputState.left = false;
+                this.dasTimers.right = performance.now(); this.shiftRight(); break;
+            case 'ArrowDown': this.inputState.down = true; break;
+            case 'ArrowUp': this.hardDrop(); break; 
+            case 'KeyX': this.rotate(1); break;
+            case 'KeyZ': this.rotate(-1); break;
+            case 'KeyC': this.executeHold(); break;
+        }
+    }
+
+    onKeyUp(e) {
+        switch (e.code) {
+            case 'ArrowLeft': this.inputState.left = false; break;
+            case 'ArrowRight': this.inputState.right = false; break;
+            case 'ArrowDown': this.inputState.down = false; break;
+        }
+    }
+
+    shiftLeft() {
+        if (this.tryMove(-1, 0)) { this.handleMoveReset(); return true; } return false;
+    }
+
+    shiftRight() {
+        if (this.tryMove(1, 0)) { this.handleMoveReset(); return true; } return false;
+    }
+
+    tryMove(dx, dy) {
+        if (!this.checkCollide(this.active, this.active.x + dx, this.active.y + dy)) {
+            this.active.x += dx; this.active.y += dy; this.lastMoveRot = false; return true;
+        }
+        return false;
+    }
+
+    rotate(dir) {
+        if (this.active.type === 'O') return;
+        let oldRot = this.active.rot;
+        let ghost = this.active.clone(); ghost.mutateRotation(dir);
+        let key = `${oldRot}-${ghost.rot}`;
+        let table = (this.active.type === 'I') ? SRS_KICKS.I : SRS_KICKS.normal;
+        let offsets = table[key] || [[0,0]];
+
+        for (let i = 0; i < offsets.length; i++) {
+            let [kx, ky] = offsets[i];
+            if (!this.checkCollide(ghost, ghost.x + kx, ghost.y - ky)) {
+                this.active.x += kx; this.active.y -= ky; this.active.mutateRotation(dir);
+                this.lastMoveRot = true; this.lastKickIdx = i; this.handleMoveReset(); return;
+            }
+        }
+    }
+
+    executeHold() {
+        if (this.hasHeld) return;
+        if (this.holdPiece) {
+            let prev = this.holdPiece.type; this.holdPiece = new Piece(this.active.type);
+            this.active = new Piece(prev);
+        } else {
+            this.holdPiece = new Piece(this.active.type); this.spawn(); return;
+        }
+        this.hasHeld = true; this.lockResets = 0; this.lockTimer = 0; this.resetFallTimer();
+        if (this.checkCollide(this.active)) this.gameover = true;
+    }
+
+    hardDrop() {
+        let d = 0; while (this.tryMove(0, 1)) { d++; }
+        this.score += d * 2; this.lock();
+    }
+
+    handleMoveReset() {
+        if (this.checkCollide(this.active, this.active.x, this.active.y + 1)) {
+            if (this.lockResets < this.maxLockResets) { this.lockResets++; this.lockTimer = 0; }
+        }
+    }
+
+    resetFallTimer() { this.fallTimer = 0; }
+
+    lock() {
+        let p = this.active;
+        for (let y = 0; y < p.size; y++) {
+            for (let x = 0; x < p.size; x++) {
+                if (p.matrix[y][x]) {
+                    if (p.y + y < 0) { this.gameover = true; return; }
+                    this.grid[p.y + y][p.x + x] = p.color;
+                }
+            }
+        }
+        this.processElimination();
+    }
+
+    processElimination() {
+        let cleared = [];
+        for (let y = 0; y < ROWS; y++) { if (this.grid[y].every(c => c !== null)) cleared.push(y); }
+        
+        let tspin = false, mini = false;
+        if (this.active.type === 'T' && this.lastMoveRot) {
+            let cx = this.active.x + 1, cy = this.active.y + 1;
+            let corners = 0;
+            [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([dx,dy]) => {
+                let fx = cx + dx, fy = cy + dy;
+                if (fx < 0 || fx >= COLS || fy >= ROWS || (fy >= 0 && this.grid[fy][fx])) corners++;
+            });
+            if (corners >= 3) {
+                let rot = this.active.rot, f = 0;
+                if (rot === 0) { if(this.isFull(cx-1,cy-1))f++; if(this.isFull(cx+1,cy-1))f++; }
+                else if (rot === 1) { if(this.isFull(cx+1,cy-1))f++; if(this.isFull(cx+1,cy+1))f++; }
+                else if (rot === 2) { if(this.isFull(cx-1,cy+1))f++; if(this.isFull(cx+1,cy+1))f++; }
+                else if (rot === 3) { if(this.isFull(cx-1,cy-1))f++; if(this.isFull(cx-1,cy+1))f++; }
+                if (f < 2 && this.lastKickIdx !== 4) mini = true; else tspin = true;
+            }
+        }
+
+        cleared.forEach(y => { this.grid.splice(y, 1); this.grid.unshift(Array(COLS).fill(null)); });
+        let linesCount = cleared.length;
+        
+        if (linesCount > 0) {
+            this.combo++; this.lines += linesCount;
+            this.level = Math.floor(this.lines / 10) + 1;
+            this.gravity = Math.max(20, 1000 - (this.level - 1) * 80);
+            
+            let base = 0, name = "";
+            if (tspin) {
+                if (linesCount === 1) { base = 800; name = "T-SPIN SINGLE"; }
+                else if (linesCount === 2) { base = 1200; name = "T-SPIN DOUBLE"; }
+                else if (linesCount === 3) { base = 1600; name = "T-SPIN TRIPLE"; }
+            } else if (mini) { base = 200; name = "T-SPIN MINI"; }
+            else {
+                if (linesCount === 1) base = 100; if (linesCount === 2) base = 300;
+                if (linesCount === 3) base = 500; if (linesCount === 4) { base = 800; name = "TETRIS"; }
+            }
+            if (name) this.alertMsg(name);
+            this.score += base * (this.b2b ? 1.5 : 1) * this.level + (this.combo > 0 ? this.combo * 50 : 0);
+            this.b2b = (linesCount === 4 || tspin || mini);
+        } else {
+            this.combo = -1; if (tspin) this.alertMsg("T-SPIN"); else if (mini) this.alertMsg("TS-MINI");
+        }
+        
+        document.getElementById('score-val').innerText = this.score;
+        document.getElementById('level-val').innerText = this.level;
+        
+        this.spawn();
+    }
+
+    isFull(x, y) { return x < 0 || x >= COLS || y >= ROWS || (y >= 0 && this.grid[y][x]); }
+
+    alertMsg(t) {
+        let b = document.getElementById('alert-box'); b.innerText = t;
+        clearTimeout(this.alertTimeout); this.alertTimeout = setTimeout(() => b.innerText = "", 1000);
+    }
+
+    updateInput(dt, now) {
+        if (this.inputState.left) {
+            if (now - this.dasTimers.left >= this.DAS) {
+                if (this.ARR === 0) { while(this.shiftLeft()){} } 
+                else if (now - this.arrTimers.left >= this.ARR) { this.shiftLeft(); this.arrTimers.left = now; }
+            }
+        }
+        if (this.inputState.right) {
+            if (now - this.dasTimers.right >= this.DAS) {
+                if (this.ARR === 0) { while(this.shiftRight()){} }
+                else if (now - this.arrTimers.right >= this.ARR) { this.shiftRight(); this.arrTimers.right = now; }
+            }
+        }
+        if (this.inputState.down) {
+            while (this.tryMove(0, 1)) { this.score += 1; } this.resetFallTimer();
+        }
+    }
+
+    getGhostY() {
+        let g = this.active.clone(); while (!this.checkCollide(g, g.x, g.y + 1)) { g.y++; } return g.y;
+    }
+
+    loop(timestamp) {
+        let dt = timestamp - this.lastTime; this.lastTime = timestamp;
+        if (!this.gameover) {
+            this.updateInput(dt, timestamp);
+            
+            if (this.checkCollide(this.active, this.active.x, this.active.y + 1)) {
+                this.lockTimer += dt; if (this.lockTimer >= this.lockDelayLimit) { this.lock(); }
+            } else {
+                this.lockTimer = 0; this.fallTimer += dt;
+                if (this.fallTimer >= this.gravity) { this.active.y++; this.fallTimer = 0; this.lastMoveRot = false; }
+            }
+            this.render();
+            requestAnimationFrame(t => this.loop(t));
+        } else {
+            this.fCtx.fillStyle = 'rgba(0,0,0,0.6)'; this.fCtx.fillRect(0,0,300,600);
+            this.fCtx.fillStyle = '#ef4444'; this.fCtx.font = 'bold 24px var(--font-family)';
+            this.fCtx.fillText("GAME OVER", 75, 300);
+        }
+    }
+
+    drawBlock(ctx, x, y, color, size = BLOCK) {
+        ctx.fillStyle = color; ctx.fillRect(x * size, y * size, size, size);
+        ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 1; ctx.strokeRect(x * size, y * size, size, size);
+        ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fillRect(x * size, y * size, size, 3);
+    }
+
+    render() {
+        this.fCtx.clearRect(0,0,300,600);
+        this.fCtx.fillStyle = '#020617'; this.fCtx.fillRect(0,0,300,600);
+        
+        this.fCtx.strokeStyle = '#1e293b'; this.fCtx.lineWidth = 0.5;
+        for(let x=1; x<COLS; x++) { this.fCtx.beginPath(); this.fCtx.moveTo(x*BLOCK,0); this.fCtx.lineTo(x*BLOCK,600); this.fCtx.stroke(); }
+        for(let y=1; y<ROWS; y++) { this.fCtx.beginPath(); this.fCtx.moveTo(0,y*BLOCK); this.fCtx.lineTo(300,y*BLOCK); this.fCtx.stroke(); }
+
+        let gy = this.getGhostY();
+        for(let y=0; y<this.active.size; y++) {
+            for(let x=0; x<this.active.size; x++) {
+                if(this.active.matrix[y][x] && gy + y >= 0) {
+                    this.fCtx.fillStyle = 'rgba(255,255,255,0.08)';
+                    this.fCtx.fillRect((this.active.x + x)*BLOCK, (gy + y)*BLOCK, BLOCK, BLOCK);
+                    this.fCtx.strokeStyle = 'rgba(255,255,255,0.2)';
+                    this.fCtx.strokeRect((this.active.x + x)*BLOCK, (gy + y)*BLOCK, BLOCK, BLOCK);
+                }
+            }
+        }
+
+        for(let y=0; y<ROWS; y++) {
+            for(let x=0; x<COLS; x++) { if(this.grid[y][x]) this.drawBlock(this.fCtx, x, y, this.grid[y][x]); }
+        }
+
+        for(let y=0; y<this.active.size; y++) {
+            for(let x=0; x<this.active.size; x++) {
+                if(this.active.matrix[y][x] && this.active.y + y >= 0) {
+                    this.drawBlock(this.fCtx, this.active.x + x, this.active.y + y, this.active.color);
+                }
+            }
+        }
+
+        this.hCtx.clearRect(0,0,120,120);
+        if (this.holdPiece) {
+            let s = 22; let ox = (120 - this.holdPiece.size*s)/2/s; let oy = (120 - this.holdPiece.size*s)/2/s;
+            for(let y=0; y<this.holdPiece.size; y++) {
+                for(let x=0; x<this.holdPiece.size; x++) {
+                    if(this.holdPiece.matrix[y][x]) this.drawBlock(this.hCtx, ox+x, oy+y, this.holdPiece.color, s);
+                }
+            }
+        }
+
+        this.nCtx.clearRect(0,0,120,520);
+        for(let i=0; i<5; i++) {
+            let p = this.queue[i]; let s = 20;
+            let ox = (120 - p.size*s)/2/s; let oy = (i * 95 + 25)/s;
+            for(let y=0; y<p.size; y++) {
+                for(let x=0; x<p.size; x++) {
+                    if(p.matrix[y][x]) this.drawBlock(this.nCtx, ox+x, oy+y, p.color, s);
+                }
+            }
+        }
+    }
+}
+
+const game = new Engine();
+</script>
+</body>
+</html>
